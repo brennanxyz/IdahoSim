@@ -1,6 +1,8 @@
 use std::fs;
+use std::io::{Error, ErrorKind};
 use std::collections::HashMap;
-use geojson::{FeatureCollection, Feature, GeoJson, Geometry, Value};
+use geojson::{FeatureCollection, Feature, GeoJson};
+use serde_json::{Value};
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right
@@ -17,36 +19,58 @@ mod tests {
     }
 }
 
-pub fn import_map() -> FeatureCollection {
+pub fn import_counties() -> Result<FeatureCollection, Error> {
 
-    let geojson_string = fs::read_to_string("./files/counties.json")
-        .expect("Should have been a file.");
+    // read file to string
+    let geojson_string = match fs::read_to_string("./files/counties.json") {
+        Ok(string) => string,
+        _ => return Err(Error::new(ErrorKind::NotFound, "Counties file not found")),
+    };
 
-    let geojson: GeoJson = geojson_string.parse::<GeoJson>().unwrap();
-    let raw_collection: FeatureCollection = FeatureCollection::try_from(geojson).unwrap();
+    // parse string to GeoJson
+    let geojson: GeoJson = match geojson_string.parse::<GeoJson>() {
+        Ok(geojson) => geojson,
+        _ => return Err(Error::new(ErrorKind::InvalidInput, "Cannot parse counties string to GeoJson")),
+    };
 
-    let collection = reduce_feature_collection_by_key_string(raw_collection, "STATE", "16");
-    collection
+    // convert GeoJson to FeatureCollection
+    match FeatureCollection::try_from(geojson) {
+        Ok(collection) => Ok(collection),
+        _ => Err(Error::new(ErrorKind::InvalidInput, "Cannot convert counties GeoJson to FeatureCollection")),
+    }
 }
 
-fn reduce_feature_collection_by_key_string(feature_collection: FeatureCollection, key_name: &str, key_value: &str) -> FeatureCollection{
+pub fn reduce_counties_feature_collection_by_state_string(feature_collection: FeatureCollection, state_name: &str) -> Result<FeatureCollection, Error>{
     let mut reduced_features: Vec<Feature> = vec![];
     let mut full_count: u32 = 0;
     let mut reduced_count: u32 = 0;
-    // a map of with a string key and vector of strings as values
-    let mut reduced_map: HashMap<String, Vec<String>> = HashMap::new();
+    
+    // read file to string
+    let state_codes_string = match fs::read_to_string("./files/state_codes.json") {
+        Ok(string) => string,
+        _ => return Err(Error::new(ErrorKind::NotFound, "State codes file not found")),
+    };
 
+    // read string to HashMap
+    let state_codes: HashMap<String, String> = match serde_json::from_str(&state_codes_string) {
+        Ok(map) => map,
+        _ => return Err(Error::new(ErrorKind::InvalidInput, "Cannot parse state codes string to HashMap")),
+    };
+
+    // get state code from state name
+    let state_code = match state_codes.get(state_name) {
+        Some(code) => code,
+        None => return Err(Error::new(ErrorKind::NotFound, "State name not found in list")),
+    };
+
+    // iterate through features
     for feature in feature_collection {
-        // if map does not contain the key, add it
-        let prop_val = feature.property(key_name).unwrap().as_str().unwrap();
+        let state_val = match feature.property("STATE") {
+            Some(Value::String(state)) => state,
+            _ => return Err(Error::new(ErrorKind::InvalidInput, "Cannot get state value from feature")),
+        };
 
-        if !reduced_map.contains_key(prop_val) {
-            reduced_map.insert(prop_val.to_string(), vec![feature.property("NAME").unwrap().to_string()]);
-        } else {
-            reduced_map.get_mut(prop_val).unwrap().push(feature.property("NAME").unwrap().to_string());
-        }
-
-        if prop_val == key_value {
+        if state_val == state_code {
             reduced_features.push(feature);
             reduced_count += 1;
         }
@@ -54,15 +78,12 @@ fn reduce_feature_collection_by_key_string(feature_collection: FeatureCollection
         full_count += 1;
     }
 
-    for (key, value) in reduced_map.iter() {
-        println!("{}: {:?}\n", key, value);
-    }
+    println!("Total features: {}\nReduced features: {}", full_count, reduced_count);
 
-    println!("Full count: {}\nReduced count: {}", full_count, reduced_count);
-
-    FeatureCollection {
+    Ok(FeatureCollection {
         bbox: None,
         features: reduced_features,
         foreign_members: None,
-    }
+    })
+
 }
