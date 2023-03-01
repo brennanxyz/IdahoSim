@@ -55,7 +55,7 @@ fn reduce_feature_collection_by_key_string(feature_collection: FeatureCollection
     }
 
     for (key, value) in reduced_map.iter() {
-        println!("{}: {:?}", key, value);
+        println!("{}: {:?}\n", key, value);
     }
 
     println!("Full count: {}\nReduced count: {}", full_count, reduced_count);
