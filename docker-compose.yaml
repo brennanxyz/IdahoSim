@@ -1,0 +1,7 @@
+# latest version docker compose
+version: '3.7'
+
+services:
+  #idaho sim
+  idahosim:
+    build: .

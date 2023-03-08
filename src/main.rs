@@ -6,11 +6,10 @@ fn main() {
         Err(e) => panic!("Error importing counties: {}", e),
     };
     
-    let temp_geom = match reduce_counties_feature_collection_by_state_string(temp_geom, "Idaho") {
+    let temp_geom_reduced = match reduce_counties_feature_collection_by_state_string(temp_geom, "Idaho") {
         Ok(geom) => geom,
         Err(e) => panic!("Error reducing counties: {}", e),
     };
-    
-    println!("{:?}", temp_geom.features.len());
-    println!("Hello, world!");
+
+    // println!("{:?}", temp_geom_reduced);
 }
