@@ -42,10 +42,9 @@ pub fn import_counties() -> Result<FeatureCollection, Error> {
     }
 }
 
-/// Reduces a FeatureCollection to only features that match a given state acronym.
+/// Reduces a FeatureCollection to only features that match a given state name.
 pub fn reduce_counties_feature_collection_by_state_string(feature_collection: FeatureCollection, state_name: &str) -> Result<FeatureCollection, Error>{
     let mut reduced_features: Vec<Feature> = vec![];
-    let mut full_count: u32 = 0;
     let mut reduced_count: u32 = 0;
     
     // read file to string
@@ -77,11 +76,9 @@ pub fn reduce_counties_feature_collection_by_state_string(feature_collection: Fe
             reduced_features.push(feature);
             reduced_count += 1;
         }
-        
-        full_count += 1;
     }
 
-    println!("Total features: {}\nReduced features: {}", full_count, reduced_count);
+    println!("Number of features: {}", reduced_count);
 
     Ok(FeatureCollection {
         bbox: None,
@@ -91,6 +88,7 @@ pub fn reduce_counties_feature_collection_by_state_string(feature_collection: Fe
 
 }
 
+/// Converts a FeatureCollection to a HashMap of county names and vectors of 2D projected (x, y) tuples.
 pub fn make_converted_coordinate_map(feature_collection: FeatureCollection) -> Result<HashMap<String, Vec<(f64, f64)>>, Error>{
     let mut coordinates: HashMap<String, Vec<(f64, f64)>> = HashMap::new();
     let mut count = 0;
@@ -102,33 +100,30 @@ pub fn make_converted_coordinate_map(feature_collection: FeatureCollection) -> R
             _ => return Err(Error::new(ErrorKind::InvalidInput, "Cannot get county name from feature")),
         };
 
-        println!("{:-<15}{:->10}", county_name, count + 1);
+        println!("{:-<20}{:->10}", county_name, count + 1);
 
         let county_geometry = match feature.geometry {
             Some(geom) => match geom.value {
                 GeoJsonValue::Polygon(polygon) => polygon,
+                // TODO: Handle MultiPolygon
+                GeoJsonValue::MultiPolygon(multi_polygon) => {
+                    println!("WHOOP|{}", county_name);
+                    multi_polygon[0].clone()
+                },
                 _ => return Err(Error::new(ErrorKind::InvalidInput, "Other than polygon geometry not supported")),
             },
             _ => return Err(Error::new(ErrorKind::InvalidInput, "Cannot get polygon from feature")),
         };
 
+        // TODO: Handle MultiPolygon
         let county_coordinates = &county_geometry[0];
-        // let mut new_coordinates: Vec<Vec<f64>> = vec![];
+
         let mut county_tuples = make_tuples_from_coordinates(county_coordinates.to_vec());
 
         let converted_tuples = match convert_long_lat_array_to_xy(&mut county_tuples) {
             Ok(tuples) => tuples,
             Err(e) => return Err(Error::new(ErrorKind::InvalidInput, format!("Cannot convert coordinates: {}", e))),
         };
-
-        // for coord in county_coordinates {
-        //     match convert_long_lat_to_xy(coord[0] as f64, coord[1] as f64) {
-        //         Ok(coord) => {
-        //             new_coordinates.push(coord)
-        //         },
-        //         Err(e) => return Err(Error::new(ErrorKind::InvalidInput, format!("Cannot convert coordinates: {}", e))),
-        //     }
-        // }
 
         coordinates.insert(county_name, converted_tuples);
         count += 1;
@@ -137,6 +132,7 @@ pub fn make_converted_coordinate_map(feature_collection: FeatureCollection) -> R
     Ok(coordinates)
 }
 
+/// Converts a vector of (longitude, latitude) vectors to (x, y) tuples.
 fn make_tuples_from_coordinates(coordinates: Vec<Vec<f64>>) -> Vec<(f64, f64)> {
     let mut tuples: Vec<(f64, f64)> = coordinates.into_iter().map(|coord| (coord[0], coord[1])).collect();
     tuples
@@ -161,6 +157,7 @@ fn convert_long_lat_to_xy(long: f64, lat: f64) -> Result<Vec<f64>, Error> {
     Ok(vec![coord.0, coord.1, 0.0])
 }
 
+/// Converts a vector of (longitude, latitude) tuples to (x, y) tuples.
 fn convert_long_lat_array_to_xy(array_in: &mut Vec<(f64, f64)>) -> Result<Vec<(f64, f64)>, Error> {
 
     let from = "EPSG:4326";
