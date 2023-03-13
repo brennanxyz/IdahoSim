@@ -1,8 +1,9 @@
 use std::fs;
 use std::io::{Error, ErrorKind};
 use std::collections::HashMap;
-use geojson::{FeatureCollection, Feature, GeoJson};
+use geojson::{FeatureCollection, Feature, GeoJson, Value as GeoJsonValue};
 use serde_json::{Value};
+use proj::{Proj};
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right
@@ -19,6 +20,7 @@ mod tests {
     }
 }
 
+/// Imports counties from a GeoJSON file.
 pub fn import_counties() -> Result<FeatureCollection, Error> {
 
     // read file to string
@@ -40,6 +42,7 @@ pub fn import_counties() -> Result<FeatureCollection, Error> {
     }
 }
 
+/// Reduces a FeatureCollection to only features that match a given state acronym.
 pub fn reduce_counties_feature_collection_by_state_string(feature_collection: FeatureCollection, state_name: &str) -> Result<FeatureCollection, Error>{
     let mut reduced_features: Vec<Feature> = vec![];
     let mut full_count: u32 = 0;
@@ -88,9 +91,90 @@ pub fn reduce_counties_feature_collection_by_state_string(feature_collection: Fe
 
 }
 
-// see: https://crates.io/crates/proj
-// pub fn convert_lat_long_to_xy(lat: f32, long: f32) -> (f32, f32) {
-//     let x = long * 111320.0;
-//     let y = lat * 111320.0;
-//     (x, y)
-// }
+pub fn make_converted_coordinate_map(feature_collection: FeatureCollection) -> Result<HashMap<String, Vec<(f64, f64)>>, Error>{
+    let mut coordinates: HashMap<String, Vec<(f64, f64)>> = HashMap::new();
+    let mut count = 0;
+
+    for feature in feature_collection {
+
+        let county_name = match feature.property("NAME") {
+            Some(Value::String(name)) => name.to_string(),
+            _ => return Err(Error::new(ErrorKind::InvalidInput, "Cannot get county name from feature")),
+        };
+
+        println!("{:-<15}{:->10}", county_name, count + 1);
+
+        let county_geometry = match feature.geometry {
+            Some(geom) => match geom.value {
+                GeoJsonValue::Polygon(polygon) => polygon,
+                _ => return Err(Error::new(ErrorKind::InvalidInput, "Other than polygon geometry not supported")),
+            },
+            _ => return Err(Error::new(ErrorKind::InvalidInput, "Cannot get polygon from feature")),
+        };
+
+        let county_coordinates = &county_geometry[0];
+        // let mut new_coordinates: Vec<Vec<f64>> = vec![];
+        let mut county_tuples = make_tuples_from_coordinates(county_coordinates.to_vec());
+
+        let converted_tuples = match convert_long_lat_array_to_xy(&mut county_tuples) {
+            Ok(tuples) => tuples,
+            Err(e) => return Err(Error::new(ErrorKind::InvalidInput, format!("Cannot convert coordinates: {}", e))),
+        };
+
+        // for coord in county_coordinates {
+        //     match convert_long_lat_to_xy(coord[0] as f64, coord[1] as f64) {
+        //         Ok(coord) => {
+        //             new_coordinates.push(coord)
+        //         },
+        //         Err(e) => return Err(Error::new(ErrorKind::InvalidInput, format!("Cannot convert coordinates: {}", e))),
+        //     }
+        // }
+
+        coordinates.insert(county_name, converted_tuples);
+        count += 1;
+    }
+
+    Ok(coordinates)
+}
+
+fn make_tuples_from_coordinates(coordinates: Vec<Vec<f64>>) -> Vec<(f64, f64)> {
+    let mut tuples: Vec<(f64, f64)> = coordinates.into_iter().map(|coord| (coord[0], coord[1])).collect();
+    tuples
+}
+
+/// Converts latitude and longitude to UTM coordinates.
+fn convert_long_lat_to_xy(long: f64, lat: f64) -> Result<Vec<f64>, Error> {
+
+    let from = "EPSG:4326";
+    let to = "EPSG:3857"; // Web Mercator https://proj.org/operations/projections/webmerc.html; alternative: ESRI:54052 https://epsg.io/54052
+
+    let proj = match Proj::new_known_crs(&from, &to, None) {
+        Ok(proj) => proj,
+        Err(e) => return Err(Error::new(ErrorKind::InvalidInput, format!("Cannot create projection: {}", e))),
+    };
+
+    let coord = match proj.convert((long, lat)) {
+        Ok(coord) => coord,
+        Err(e) => return Err(Error::new(ErrorKind::InvalidInput, format!("Cannot convert coordinates: {}", e))),
+    };
+
+    Ok(vec![coord.0, coord.1, 0.0])
+}
+
+fn convert_long_lat_array_to_xy(array_in: &mut Vec<(f64, f64)>) -> Result<Vec<(f64, f64)>, Error> {
+
+    let from = "EPSG:4326";
+    let to = "EPSG:3857"; // Web Mercator https://proj.org/operations/projections/webmerc.html; alternative: ESRI:54052 https://epsg.io/54052
+
+    let proj = match Proj::new_known_crs(&from, &to, None) {
+        Ok(proj) => proj,
+        Err(e) => return Err(Error::new(ErrorKind::InvalidInput, format!("Cannot create projection: {}", e))),
+    };
+
+    let coord = match proj.convert_array(array_in) {
+        Ok(coord) => coord.to_vec(),
+        Err(e) => return Err(Error::new(ErrorKind::InvalidInput, format!("Cannot convert coordinates: {}", e))),
+    };
+
+    Ok(coord)
+}

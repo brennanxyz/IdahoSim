@@ -1,4 +1,4 @@
-use geometry::{import_counties, reduce_counties_feature_collection_by_state_string};
+use geometry::{import_counties, reduce_counties_feature_collection_by_state_string, make_converted_coordinate_map};
 
 fn main() {
     let temp_geom = match import_counties() {
@@ -11,5 +11,12 @@ fn main() {
         Err(e) => panic!("Error reducing counties: {}", e),
     };
 
-    // println!("{:?}", temp_geom_reduced);
+    let temp_map = match make_converted_coordinate_map(temp_geom_reduced) {
+        Ok(map) => map,
+        Err(e) => panic!("Error making coordinate map: {}", e),
+    };
+
+
+
+    println!("{:?}", temp_map);
 }
