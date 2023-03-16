@@ -208,6 +208,7 @@ dependencies = [
  "geojson",
  "proj",
  "serde_json",
+ "threadpool",
 ]
 
 [[package]]
@@ -523,6 +524,10 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "threadpool"
+version = "0.1.0"
 
 [[package]]
 name = "unicode-ident"

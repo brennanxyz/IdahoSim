@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use geojson::{FeatureCollection, Feature, GeoJson, Value as GeoJsonValue};
 use serde_json::{Value};
 use proj::{Proj};
+use threadpool::ThreadPool;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right
@@ -91,45 +92,103 @@ pub fn reduce_counties_feature_collection_by_state_string(feature_collection: Fe
 /// Converts a FeatureCollection to a HashMap of county names and vectors of 2D projected (x, y) tuples.
 pub fn make_converted_coordinate_map(feature_collection: FeatureCollection) -> Result<HashMap<String, Vec<(f64, f64)>>, Error>{
     let mut coordinates: HashMap<String, Vec<(f64, f64)>> = HashMap::new();
-    let mut count = 0;
+    let mut _count = 0;
+    let pool = ThreadPool::new(8);
 
     for feature in feature_collection {
 
-        let county_name = match feature.property("NAME") {
-            Some(Value::String(name)) => name.to_string(),
-            _ => return Err(Error::new(ErrorKind::InvalidInput, "Cannot get county name from feature")),
-        };
+        pool.execute(move || {
+            handle_feature(feature).unwrap();
+            // let county_name = match feature.property("NAME") {
+            //     Some(Value::String(name)) => name.to_string(),
+            //     _ => return Err(Error::new(ErrorKind::InvalidInput, "Cannot get county name from feature")),
+            // };
 
-        println!("{:-<20}{:->10}", county_name, count + 1);
+            // println!("{:-<20}{:->10}", county_name, count + 1);
 
-        let county_geometry = match feature.geometry {
-            Some(geom) => match geom.value {
-                GeoJsonValue::Polygon(polygon) => polygon,
-                // TODO: Handle MultiPolygon
-                GeoJsonValue::MultiPolygon(multi_polygon) => {
-                    println!("WHOOP|{}", county_name);
-                    multi_polygon[0].clone()
-                },
-                _ => return Err(Error::new(ErrorKind::InvalidInput, "Other than polygon geometry not supported")),
-            },
-            _ => return Err(Error::new(ErrorKind::InvalidInput, "Cannot get polygon from feature")),
-        };
+            // let county_geometry = match feature.geometry {
+            //     Some(geom) => match geom.value {
+            //         GeoJsonValue::Polygon(polygon) => polygon,
+            //         GeoJsonValue::MultiPolygon(multi_polygon) => {
+            //             println!("WHOOP|{}", county_name);
+            //             multi_polygon[0].clone()
+            //         },
+            //         _ => return Err(Error::new(ErrorKind::InvalidInput, "Other than polygon geometry not supported")),
+            //     },
+            //     _ => return Err(Error::new(ErrorKind::InvalidInput, "Cannot get polygon from feature")),
+            // };
+
+            // let county_coordinates = &county_geometry[0];
+
+            // let mut county_tuples = make_tuples_from_coordinates(county_coordinates.to_vec());
+
+            // let converted_tuples = match convert_long_lat_array_to_xy(&mut county_tuples) {
+            //     Ok(tuples) => tuples,
+            //     Err(e) => return Err(Error::new(ErrorKind::InvalidInput, format!("Cannot convert coordinates: {}", e))),
+            // };
+
+            // coordinates.insert(county_name, converted_tuples);
+            // count += 1;
+
+        });
+
+
+
+        // let county_geometry = match feature.geometry {
+        //     Some(geom) => match geom.value {
+        //         GeoJsonValue::Polygon(polygon) => polygon,
+        //         // TODO: Handle MultiPolygon
+        //         GeoJsonValue::MultiPolygon(multi_polygon) => {
+        //             println!("WHOOP|{}", county_name);
+        //             multi_polygon[0].clone()
+        //         },
+        //         _ => return Err(Error::new(ErrorKind::InvalidInput, "Other than polygon geometry not supported")),
+        //     },
+        //     _ => return Err(Error::new(ErrorKind::InvalidInput, "Cannot get polygon from feature")),
+        // };
 
         // TODO: Handle MultiPolygon
-        let county_coordinates = &county_geometry[0];
-
-        let mut county_tuples = make_tuples_from_coordinates(county_coordinates.to_vec());
-
-        let converted_tuples = match convert_long_lat_array_to_xy(&mut county_tuples) {
-            Ok(tuples) => tuples,
-            Err(e) => return Err(Error::new(ErrorKind::InvalidInput, format!("Cannot convert coordinates: {}", e))),
-        };
-
-        coordinates.insert(county_name, converted_tuples);
-        count += 1;
+        
+        // Ok(coordinates)
     }
 
     Ok(coordinates)
+}
+
+fn handle_feature(feature: Feature) -> Result<(), Error> {
+    let county_name = match feature.property("NAME") {
+        Some(Value::String(name)) => name.to_string(),
+        _ => return Err(Error::new(ErrorKind::InvalidInput, "Cannot get county name from feature")),
+    };
+
+    // println!("{:-<20}{:->10}", county_name, count + 1);
+    println!("{}", county_name);
+
+    let county_geometry = match feature.geometry {
+        Some(geom) => match geom.value {
+            GeoJsonValue::Polygon(polygon) => polygon,
+            GeoJsonValue::MultiPolygon(multi_polygon) => {
+                println!("WHOOP|{}", county_name);
+                multi_polygon[0].clone()
+            },
+            _ => return Err(Error::new(ErrorKind::InvalidInput, "Other than polygon geometry not supported")),
+        },
+        _ => return Err(Error::new(ErrorKind::InvalidInput, "Cannot get polygon from feature")),
+    };
+
+    let county_coordinates = &county_geometry[0];
+
+    let mut county_tuples = make_tuples_from_coordinates(county_coordinates.to_vec());
+
+    let converted_tuples = match convert_long_lat_array_to_xy(&mut county_tuples) {
+        Ok(tuples) => tuples,
+        Err(e) => return Err(Error::new(ErrorKind::InvalidInput, format!("Cannot convert coordinates: {}", e))),
+    };
+
+    // coordinates.insert(county_name, converted_tuples);
+    // count += 1;
+
+    Ok(())
 }
 
 /// Converts a vector of (longitude, latitude) vectors to (x, y) tuples.
