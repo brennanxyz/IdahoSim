@@ -104,11 +104,12 @@ pub fn make_converted_coordinate_map(feature_collection: FeatureCollection) -> R
 
         let county_geometry = match feature.geometry {
             Some(geom) => match geom.value {
-                GeoJsonValue::Polygon(polygon) => polygon,
+                GeoJsonValue::Polygon(polygon) => {
+                    vec![polygon]
+                },
                 // TODO: Handle MultiPolygon
                 GeoJsonValue::MultiPolygon(multi_polygon) => {
-                    println!("WHOOP|{}", county_name);
-                    multi_polygon[0].clone()
+                    multi_polygon
                 },
                 _ => return Err(Error::new(ErrorKind::InvalidInput, "Other than polygon geometry not supported")),
             },
@@ -116,16 +117,17 @@ pub fn make_converted_coordinate_map(feature_collection: FeatureCollection) -> R
         };
 
         // TODO: Handle MultiPolygon
-        let county_coordinates = &county_geometry[0];
+        let county_coordinates_list = &county_geometry;
+        println!("Number of polygons: {}", county_coordinates_list.len());
 
-        let mut county_tuples = make_tuples_from_coordinates(county_coordinates.to_vec());
+        // let mut county_tuples = make_tuples_from_coordinates(county_coordinates.to_vec());
 
-        let converted_tuples = match convert_long_lat_array_to_xy(&mut county_tuples) {
-            Ok(tuples) => tuples,
-            Err(e) => return Err(Error::new(ErrorKind::InvalidInput, format!("Cannot convert coordinates: {}", e))),
-        };
+        // let converted_tuples = match convert_long_lat_array_to_xy(&mut county_tuples) {
+        //     Ok(tuples) => tuples,
+        //     Err(e) => return Err(Error::new(ErrorKind::InvalidInput, format!("Cannot convert coordinates: {}", e))),
+        // };
 
-        coordinates.insert(county_name, converted_tuples);
+        // coordinates.insert(county_name, converted_tuples);
         count += 1;
     }
 
